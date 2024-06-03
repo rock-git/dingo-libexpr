@@ -16,11 +16,14 @@
 #define _EXPR_OPERAND_H_
 
 #include <any>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
+#include "expr/expr_string.h"
 #include "types.h"
 
 namespace dingodb::expr {
@@ -88,17 +91,27 @@ namespace any_optional_data_adaptor {
 
 template <typename T>
 Operand ToOperand(const std::any &v) {
-  const auto opt = std::any_cast<const std::optional<T>>(v);
-  if (opt.has_value()) {
-    return *opt;
+  if (!v.has_value()) {
+    return nullptr;
   }
-  return nullptr;
+
+  const auto &origin_value = std::any_cast<const T &>(v);
+  if constexpr (std::is_same_v<T, std::vector<int32_t>> || std::is_same_v<T, std::vector<int64_t>> || std::is_same_v<T, std::vector<bool>> || std::is_same_v<T, std::vector<float>> || std::is_same_v<T, std::vector<double>> || std::is_same_v<T, std::vector<std::string>>) {
+    return std::make_shared<T>(origin_value);
+  } else {
+    return origin_value;
+  }
 }
 
 template <typename T>
 std::any FromOperand(const Operand &v) {
-  auto opt = (v != nullptr ? std::optional<T>(v.GetValue<T>()) : std::optional<T>());
-  return std::make_any<std::optional<T>>(opt);
+  if constexpr (std::is_same_v<T, std::vector<int32_t>> || std::is_same_v<T, std::vector<int64_t>> || std::is_same_v<T, std::vector<bool>> || std::is_same_v<T, std::vector<float>> || std::is_same_v<T, std::vector<double>> || std::is_same_v<T, std::vector<std::string>>) {
+    return v != nullptr ? std::make_any<T>(*v.GetValue<std::shared_ptr<T>>()) : std::any();
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return v != nullptr ? std::make_any<std::string>(*v.GetValue<String>().GetPtr()) : std::any();
+  } else {
+    return v != nullptr ? std::make_any<T>(v.GetValue<T>()) : std::any();
+  }
 }
 
 // GCC does not allow template specialization in class, so we need this.
